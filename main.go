@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"flag"
 	"fmt"
 	"math/rand"
 	"net"
+	"net/http"
+	"strings"
 	"time"
 
 	"github.com/iam-abdul/go-tcp-tunnel/client"
@@ -65,6 +68,7 @@ func ServerSide() {
 
 			for {
 				n, err := c.Read(buf)
+
 				if err != nil {
 					if err.Error() == "EOF" {
 						fmt.Println("client disconnected")
@@ -72,9 +76,42 @@ func ServerSide() {
 					} else {
 						panic(err)
 					}
-
 				}
-				fmt.Println("on server --> ", string(buf[:n]))
+
+				requestString := string(buf[:n])
+				reader := strings.NewReader(requestString)
+
+				// parsing the string to a http request object
+				req, err := http.ReadRequest(bufio.NewReader(reader))
+
+				if err != nil {
+					panic(err)
+				}
+
+				// get the host field from the header
+				host := req.Host
+
+				// get the connection object from the map
+				// using the host field as the key
+				conn, ok := connections[host]
+
+				if !ok {
+					fmt.Println("connection not found")
+					break
+				}
+
+				// write the request to the connection object
+				// which is the client connection
+
+				// convert request string to byte array
+				// and write to the connection object
+
+				_, err = conn.Write([]byte(requestString))
+
+				if err != nil {
+					panic(err)
+				}
+
 			}
 
 		}(conn)
