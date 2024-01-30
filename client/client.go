@@ -31,7 +31,7 @@ func RunAsClient(clientPort string) {
 
 	defer httpConn.Close()
 
-	buf := make([]byte, 1024)
+	var buf []byte
 
 	for {
 		n, err := conn.Read(buf)

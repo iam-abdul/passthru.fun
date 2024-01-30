@@ -23,6 +23,18 @@ func GenerateRandomSubDomain() string {
 	return subdomain + "." + domain
 }
 
+// i need to rewrite the server side code like client side
+// when a client connects, i should identify if it is tcp connection
+// or http connection
+// if it is tcp connection, i should store the connection object
+// in a map with the randomSubDomain as the key
+
+// if it is http connection, i should read the host header
+// and get the connection object from the map
+// and write the request to the connection object
+// and read the response from the connection object
+// and write the response to the http connection object
+
 func ServerSide() {
 
 	// start a tcp server on port 8888
@@ -64,7 +76,7 @@ func ServerSide() {
 
 			c.Write([]byte(randomSubDomain + "\n"))
 
-			buf := make([]byte, 1024)
+			var buf []byte
 
 			for {
 				n, err := c.Read(buf)
