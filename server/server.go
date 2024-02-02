@@ -51,6 +51,9 @@ func (s *Server) readLoop(conn net.Conn) {
 		if err != nil {
 			if err.Error() == "EOF" {
 				fmt.Println("client disconnected")
+				// we also need to free up the hostname that was assigned to the client
+
+				s.removeTheConnection(&conn)
 				break
 			} else {
 				panic(err)
@@ -101,6 +104,16 @@ func (s *Server) createHostName(requestedName string, conn *net.Conn, req *http.
 	}
 	s.lockConn.Unlock()
 
+}
+
+func (s *Server) removeTheConnection(connection *net.Conn) {
+	s.lockConn.Lock()
+	for key, value := range s.connections {
+		if value == connection {
+			delete(s.connections, key)
+		}
+	}
+	s.lockConn.Unlock()
 }
 
 func StartNewServer(listenAddress string) {
