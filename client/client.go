@@ -1,67 +1,62 @@
 package client
 
 import (
-	"bufio"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"net/http"
 	"strings"
 )
 
-func RunAsClient(clientPort string) {
+func RunAsClient() {
+	// start tcp connection to the server
 
-	// start connection with tcp server
-	// on port 8888
+	_, err := net.Dial("tcp", "localhost:8888")
+	if err != nil {
+		panic(err)
+	}
 
-	conn, err := net.Dial("tcp", "192.168.80.45:8888")
+	// send the request to get a domain name
+	// request should be a post request with the body containing the domain name
+	req, err := http.NewRequest("POST", "http://localhost:8888", strings.NewReader("tester.com"))
 
 	if err != nil {
 		panic(err)
 	}
 
-	defer conn.Close()
+	req.Host = "abdul.com"
 
-	// log the data received from the server
-
-	httpConn, err := net.Dial("tcp", "localhost:"+clientPort)
+	resp, err := http.DefaultClient.Do(req)
 
 	if err != nil {
 		panic(err)
 	}
 
-	defer httpConn.Close()
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	var buf []byte
+	bodyString := string(bodyBytes)
+
+	fmt.Println("response from server ", resp.Status, resp.StatusCode, bodyString)
+
+	defer resp.Body.Close()
+
+	// now we will listen to the server connection
+
+	// buf := make([]byte, 2048)
 
 	for {
-		n, err := conn.Read(buf)
-		if err != nil {
-			if err.Error() == "EOF" {
-				fmt.Println("server disconnected")
-				break
-			} else {
-				panic(err)
-			}
-		}
 
-		// create it as a http request
-		// and send it to the http server after replacing the host header
+		// n, err := serverConnection.Read(buf)
+		// if err != nil {
+		// 	panic(err)
+		// }
 
-		requestString := string(buf[:n])
+		// fmt.Println("received from server ", string(buf[:n]))
 
-		reader := strings.NewReader(requestString)
-
-		// parsing the string to a http request object
-		req, err := http.ReadRequest(bufio.NewReader(reader))
-
-		if err != nil {
-			fmt.Println("error parsing request string to http request object")
-		} else {
-			req.Host = "localhost:" + clientPort
-			req.Write(httpConn)
-		}
-
-		fmt.Println("on client --> ", string(buf[:n]))
 	}
 
 }
