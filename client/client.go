@@ -5,58 +5,78 @@ import (
 	"io"
 	"log"
 	"net"
-	"net/http"
-	"strings"
 )
+
+func joinConnections(conn1 net.Conn, conn2 net.Conn) {
+	fmt.Println("joining connections")
+	// Copy data from conn1 to conn2
+	go func() {
+		_, err := io.Copy(conn1, conn2)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+
+	// Copy data from conn2 to conn1
+	go func() {
+		_, err := io.Copy(conn2, conn1)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}()
+}
 
 func RunAsClient() {
 	// start tcp connection to the server
 
-	_, err := net.Dial("tcp", "localhost:8888")
+	serverConnection, err := net.Dial("tcp", "localhost:8888")
 	if err != nil {
 		panic(err)
 	}
 
-	// send the request to get a domain name
-	// request should be a post request with the body containing the domain name
-	req, err := http.NewRequest("POST", "http://localhost:8888", strings.NewReader("tester.com"))
+	// requesting the domain
+	serverConnection.Write([]byte("domain abdul.com"))
 
-	if err != nil {
-		panic(err)
-	}
-
-	req.Host = "abdul.com"
-
-	resp, err := http.DefaultClient.Do(req)
+	// reading the response
+	isDomainAvailable := make([]byte, 2048)
+	n, err := serverConnection.Read(isDomainAvailable)
 
 	if err != nil {
 		panic(err)
 	}
 
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
+	fmt.Println("domain availability ", string(isDomainAvailable[:n]))
 
-	bodyString := string(bodyBytes)
+	if string(isDomainAvailable[:n]) == "true" {
 
-	fmt.Println("response from server ", resp.Status, resp.StatusCode, bodyString)
+		// client tcp connection
+		clientConnection, err := net.Dial("tcp", "localhost:3000")
+		if err != nil {
+			panic(err)
+		}
 
-	defer resp.Body.Close()
+		// join the connections
+		joinConnections(serverConnection, clientConnection)
 
-	// now we will listen to the server connection
+		// for {
+		// 	// read the response from the server
+		// 	buf := make([]byte, 2048)
+		// 	n, err := serverConnection.Read(buf)
+		// 	if err != nil {
+		// 		panic(err)
+		// 	}
 
-	// buf := make([]byte, 2048)
+		// 	fmt.Println("server says ", string(buf[:n]))
 
-	for {
+		// 	//
 
-		// n, err := serverConnection.Read(buf)
-		// if err != nil {
-		// 	panic(err)
 		// }
+		for {
 
-		// fmt.Println("received from server ", string(buf[:n]))
+		}
 
+	} else {
+		fmt.Println("domain is not available")
 	}
 
 }

@@ -2,133 +2,112 @@ package server
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
-	"io"
 	"net"
 	"net/http"
-	"strconv"
-	"sync"
+	"strings"
 )
 
 type Server struct {
-	ListenAddress string
-	Ln            net.Listener
-	lockConn      sync.Mutex
-	connections   map[string]net.Conn
+	Addr        string
+	Connections map[string]net.Conn
 }
 
-func (s *Server) startServer() {
-	ln, err := net.Listen("tcp", s.ListenAddress)
+func (s *Server) handleConnection(conn net.Conn) {
+	// we will look at the first few words of data
+	// to determine if it is a request or a tcp connection
 
+	for {
+		buf := make([]byte, 2048)
+		n, err := conn.Read(buf)
+		if err != nil {
+			if err.Error() == "EOF" {
+				// clear up the connection
+				disconnectedDomain := ""
+				for domain, connection := range s.Connections {
+					if connection == conn {
+						disconnectedDomain = domain
+						break
+					}
+				}
+
+				if disconnectedDomain != "" {
+					fmt.Println("domain disconnected ", disconnectedDomain)
+					delete(s.Connections, disconnectedDomain)
+				}
+
+				conn.Close()
+				break
+			} else {
+				panic(err)
+			}
+		}
+
+		fmt.Println("data received ", string(buf[:n]))
+
+		words := strings.Fields(string(buf[:n]))
+
+		if words[0] == "domain" {
+			fmt.Println("domain request received ", words[1])
+
+			// check if the domain is available
+			if s.Connections[words[1]] != nil {
+				conn.Write([]byte("false"))
+			} else {
+				// store the connection
+				s.Connections[words[1]] = conn
+				conn.Write([]byte("true"))
+			}
+
+		} else {
+			// this is a http request from the some server
+			// find the host and forward the request to the host
+			fmt.Println("http request received ", string(buf[:n]))
+			req, err := http.ReadRequest(bufio.NewReader(strings.NewReader(string(buf[:n]))))
+
+			if err != nil {
+				if err.Error() == "EOF" {
+					fmt.Println("EOF error")
+				} else {
+					panic(err)
+				}
+			}
+
+			host := req.Host
+			fmt.Println("host ", host)
+
+			// find if the host is available in the connections
+			if s.Connections[host] != nil {
+				// forward the request to the host
+				s.Connections[host].Write(buf[:n])
+			}
+
+		}
+	}
+
+}
+
+func StartNewServer(addr string) {
+
+	server := &Server{
+		Addr:        addr,
+		Connections: make(map[string]net.Conn),
+	}
+
+	// start a tcp server
+	hostConn, err := net.Listen("tcp", server.Addr)
 	if err != nil {
 		panic(err)
 	}
 
-	s.Ln = ln
-
-	s.acceptLoop()
-}
-
-func (s *Server) acceptLoop() {
 	for {
-		conn, err := s.Ln.Accept()
-
+		conn, err := hostConn.Accept()
 		if err != nil {
 			panic(err)
 		}
 
-		go s.readLoop(conn)
+		go server.handleConnection(conn)
+
 	}
-}
 
-func (s *Server) readLoop(conn net.Conn) {
-	buf := make([]byte, 2048)
-
-	for {
-		n, err := conn.Read(buf)
-
-		if err != nil {
-			if err.Error() == "EOF" {
-				fmt.Println("client disconnected")
-				// we also need to free up the hostname that was assigned to the client
-
-				s.removeTheConnection(conn)
-				break
-			} else {
-				fmt.Println("error reading from connection ", err)
-				continue
-			}
-		}
-
-		reader := bufio.NewReader(bytes.NewReader(buf[:n]))
-
-		req, err := http.ReadRequest(reader)
-
-		if err != nil {
-			fmt.Println("error parsing request string to http request object ", err)
-		} else if req.Method == "POST" && req.Host == "abdul.com" {
-			fmt.Println("received", req.Method, req.Host, req.Body)
-
-			bodyBytes, err := io.ReadAll(req.Body)
-
-			if err != nil {
-				fmt.Println("error reading request body ", err)
-			}
-
-			// if the request is to the domain abdul.com then we will create a new hostname
-
-			s.createHostName(string(bodyBytes), conn, req)
-
-		} else {
-			fmt.Println("copying the req to client", req.Method, req.Host, req.Body)
-
-			(s.connections[req.Host]).Write(buf[:n])
-
-		}
-
-		// fmt.Println("received", string(buf[:n]))
-	}
-}
-
-func (s *Server) createHostName(requestedName string, conn net.Conn, req *http.Request) {
-	// check if the requested name is already in use
-	// if it is then return an error
-
-	// if it is not then create a new hostname and return the hostname
-	s.lockConn.Lock()
-	if s.connections[requestedName] == nil {
-		s.connections[requestedName] = conn
-
-		// send the response back to the client
-		resp := "HTTP/1.1 200 OK\r\nContent-Length: " + strconv.Itoa(len(requestedName)) + "\r\n\r\n" + requestedName
-		(conn).Write([]byte(resp))
-	} else {
-		// send the response back to the client
-		resp := "HTTP/1.1 400 Bad Request\r\nContent-Length: " + strconv.Itoa(len("Hostname already in use")) + "\r\n\r\n" + "Hostname already in use"
-		(conn).Write([]byte(resp))
-	}
-	s.lockConn.Unlock()
-
-	// send sample message
-	(conn).Write([]byte("hello from server"))
-
-}
-
-func (s *Server) removeTheConnection(connection net.Conn) {
-	s.lockConn.Lock()
-	for key, value := range s.connections {
-		if value == connection {
-			delete(s.connections, key)
-		}
-	}
-	s.lockConn.Unlock()
-}
-
-func StartNewServer(listenAddress string) {
-	server := Server{
-		ListenAddress: listenAddress,
-		connections:   make(map[string]net.Conn),
-	}
-	server.startServer()
 }
