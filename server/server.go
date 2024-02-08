@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -23,6 +24,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		if err != nil {
 			if err.Error() == "EOF" {
 				// clear up the connection
+				fmt.Println("connection closed")
 				disconnectedDomain := ""
 				for domain, connection := range s.Connections {
 					if connection == conn {
@@ -43,7 +45,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 			}
 		}
 
-		fmt.Println("data received ", string(buf[:n]))
+		// fmt.Println("data received ", string(buf[:n]))
 
 		words := strings.Fields(string(buf[:n]))
 
@@ -62,7 +64,7 @@ func (s *Server) handleConnection(conn net.Conn) {
 		} else {
 			// this is a http request from the some server
 			// find the host and forward the request to the host
-			fmt.Println("http request received ", string(buf[:n]))
+			// fmt.Println("http request received ", string(buf[:n]))
 			req, err := http.ReadRequest(bufio.NewReader(strings.NewReader(string(buf[:n]))))
 
 			if err != nil {
@@ -74,12 +76,38 @@ func (s *Server) handleConnection(conn net.Conn) {
 			}
 
 			host := req.Host
-			fmt.Println("host ", host)
+			fmt.Println("outside server to client ", host)
+			// fmt.Println("host ", host)
 
-			// find if the host is available in the connections
-			if s.Connections[host] != nil {
-				// forward the request to the host
-				s.Connections[host].Write(buf[:n])
+			targetConn := s.Connections[host]
+			fmt.Println("target connection ", targetConn)
+
+			if targetConn == nil {
+				fmt.Println("target host not found")
+				continue
+			}
+
+			// join the target connection with the client connection
+			go func() {
+
+				fmt.Println("copying data from server to client")
+				copied, err := io.Copy(targetConn, conn)
+				fmt.Println("copied data ", copied)
+				if err != nil {
+					fmt.Println("error in copying data ", err)
+				}
+			}()
+
+			// go func() {
+			// 	fmt.Println("copying data from client to server")
+			// 	_, err := io.Copy(conn, targetConn)
+			// 	if err != nil {
+			// 		fmt.Println("error in copying data ", err)
+			// 	}
+			// }()
+
+			if err != nil {
+				fmt.Println("error in copying data ", err)
 			}
 
 		}
