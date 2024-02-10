@@ -1,11 +1,13 @@
 package server
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"strings"
 )
 
@@ -47,6 +49,34 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 				// trim the content
 				fmt.Println("Content following domain:", contentFollowingDomain)
 				// Now contentFollowingDomain contains the contents following the word "domain"
+			}
+		} else {
+			// it is a http request that needs to be sent to proper client downstream
+			// converting the buffer to http request
+
+			request, err := http.ReadRequest(bufio.NewReader(strings.NewReader(string(buf[:n]))))
+			if err != nil {
+				fmt.Println("Error reading request: ", err)
+				// write back some message
+				_, err := conn.Write([]byte("Error reading request"))
+				if err != nil {
+					fmt.Println("Error writing to client: ", err)
+				}
+				// TODO should disconnect the client
+				break
+			}
+
+			// find the host from the request
+			host := request.Host
+			fmt.Println("Host: ", host)
+
+			// writing the request to the proper client
+			clientConn := s.connections[host]
+			if clientConn != nil {
+				_, err := clientConn.Write(buf[:n])
+				if err != nil {
+					fmt.Println("Error writing to client: ", err)
+				}
 			}
 		}
 
