@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 type clientConnection struct {
@@ -17,10 +18,11 @@ type clientConnection struct {
 }
 
 type Server struct {
-	connections map[string]clientConnection
+	connectionsLock sync.RWMutex
+	connections     map[string]clientConnection
 }
 
-func handleClientResponse(conn *net.TCPConn, response chan []byte, thisSubdomain string, connections *map[string]clientConnection) {
+func handleClientResponse(conn *net.TCPConn, response chan []byte, thisSubdomain string, connections *map[string]clientConnection, connectionsLock sync.RWMutex) {
 	defer conn.Close()
 	buf := make([]byte, 1024)
 	for {
@@ -30,7 +32,9 @@ func handleClientResponse(conn *net.TCPConn, response chan []byte, thisSubdomain
 
 				// remove the connection from the map
 				// delete(s.connections, thisSubdomain)
+				connectionsLock.Lock()
 				delete(*connections, thisSubdomain)
+				connectionsLock.Unlock()
 
 				fmt.Println("removed closed client ", err)
 				fmt.Println("Number of connections: ", len(*connections))
@@ -70,16 +74,18 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 						fmt.Println("Error writing to client: ", err)
 					}
 				} else {
+					s.connectionsLock.Lock()
 					s.connections[contentFollowingDomain] = clientConnection{
 						conn:     conn,
 						response: make(chan []byte),
 					}
+					s.connectionsLock.Unlock()
 
 					// since this is a client connection and it will be in connected state all
 					// the time, we can start a goroutine to listen for the response from the client
 					// and pipe it to the response channel
 
-					go handleClientResponse(conn, s.connections[contentFollowingDomain].response, contentFollowingDomain, &s.connections)
+					go handleClientResponse(conn, s.connections[contentFollowingDomain].response, contentFollowingDomain, &s.connections, s.connectionsLock)
 					break
 
 				}
@@ -104,7 +110,6 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 							break
 						}
 					}
-
 					break
 				}
 				// write back some message
@@ -112,7 +117,6 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 				if err != nil {
 					fmt.Println("Error writing to client: ", err)
 				}
-
 				break
 			}
 
@@ -171,7 +175,7 @@ func (s *Server) start() {
 			}
 		}
 		// s.connections[conn.RemoteAddr().String()] = conn
-		fmt.Println("New connection from: ", conn.RemoteAddr().String())
+		// fmt.Println("New connection from: ", conn.RemoteAddr().String())
 
 		go s.handleConnection(conn)
 	}
