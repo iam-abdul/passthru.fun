@@ -20,6 +20,22 @@ type Server struct {
 	connections map[string]clientConnection
 }
 
+func handleClientResponse(conn *net.TCPConn, response chan []byte) {
+	defer conn.Close()
+	buf := make([]byte, 1024)
+	for {
+		n, err := conn.Read(buf)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				fmt.Println("Client disconnected ", err)
+				break
+			}
+		}
+
+		response <- buf[:n]
+	}
+}
+
 func (s *Server) handleConnection(conn *net.TCPConn) {
 	buf := make([]byte, 1024)
 	for {
@@ -56,6 +72,9 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 					// the time, we can start a goroutine to listen for the response from the client
 					// and pipe it to the response channel
 
+					go handleClientResponse(conn, s.connections[contentFollowingDomain].response)
+					break
+
 				}
 
 				// trim the content
@@ -87,6 +106,13 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 			clientConn := s.connections[host].conn
 			if clientConn != nil {
 				_, err := clientConn.Write(buf[:n])
+				if err != nil {
+					fmt.Println("Error writing to client: ", err)
+				}
+
+				// read the response from the client and write it back
+				response := <-s.connections[host].response
+				_, err = conn.Write(response)
 				if err != nil {
 					fmt.Println("Error writing to client: ", err)
 				}
