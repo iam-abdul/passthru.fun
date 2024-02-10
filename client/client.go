@@ -18,6 +18,14 @@ func RunAsClient() {
 
 	defer conn.Close()
 
+	// will request the domain here
+	response, err := conn.Write([]byte("domain abdul.com"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Println("Response: ", string(response))
+
 	buf := make([]byte, 1024)
 	for {
 		n, err := conn.Read(buf)
