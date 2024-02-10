@@ -11,12 +11,16 @@ import (
 	"strings"
 )
 
+type clientConnection struct {
+	conn     *net.TCPConn
+	response chan []byte
+}
+
 type Server struct {
-	connections map[string]*net.TCPConn
+	connections map[string]clientConnection
 }
 
 func (s *Server) handleConnection(conn *net.TCPConn) {
-	defer conn.Close()
 	buf := make([]byte, 1024)
 	for {
 		n, err := conn.Read(buf)
@@ -36,14 +40,22 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 				contentFollowingDomain = strings.TrimSpace(contentFollowingDomain)
 				// check if the domain is already in the map
 				exists := s.connections[contentFollowingDomain]
-				if exists != nil {
+				if exists.conn != nil {
 					// we will forward the message to the other client
 					_, err := conn.Write([]byte("false"))
 					if err != nil {
 						fmt.Println("Error writing to client: ", err)
 					}
 				} else {
-					s.connections[contentFollowingDomain] = conn
+					s.connections[contentFollowingDomain] = clientConnection{
+						conn:     conn,
+						response: make(chan []byte),
+					}
+
+					// since this is a client connection and it will be in connected state all
+					// the time, we can start a goroutine to listen for the response from the client
+					// and pipe it to the response channel
+
 				}
 
 				// trim the content
@@ -54,6 +66,7 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 			// it is a http request that needs to be sent to proper client downstream
 			// converting the buffer to http request
 
+			defer conn.Close()
 			request, err := http.ReadRequest(bufio.NewReader(strings.NewReader(string(buf[:n]))))
 			if err != nil {
 				fmt.Println("Error reading request: ", err)
@@ -71,7 +84,7 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 			fmt.Println("Host: ", host)
 
 			// writing the request to the proper client
-			clientConn := s.connections[host]
+			clientConn := s.connections[host].conn
 			if clientConn != nil {
 				_, err := clientConn.Write(buf[:n])
 				if err != nil {
@@ -83,19 +96,6 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 		fmt.Println("Received from client: ", string(buf[:n]))
 		fmt.Println("Number of connections: ", len(s.connections))
 
-		// if len(s.connections) > 1 {
-		// 	// we will forward the message to the other client
-		// 	for _, c := range s.connections {
-		// 		if c != conn {
-		// 			_, err := c.Write(buf[:n])
-		// 			// lets use copy instead of Write
-		// 			// _, err := io.Copy(c, conn)
-		// 			if err != nil {
-		// 				fmt.Println("Error writing to client: ", err)
-		// 			}
-		// 		}
-		// 	}
-		// }
 	}
 }
 
@@ -129,7 +129,7 @@ func (s *Server) start() {
 
 func StartNewServer(address string) {
 	server := &Server{
-		connections: make(map[string]*net.TCPConn),
+		connections: make(map[string]clientConnection),
 	}
 	server.start()
 }
