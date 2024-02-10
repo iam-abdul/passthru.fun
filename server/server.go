@@ -20,14 +20,20 @@ type Server struct {
 	connections map[string]clientConnection
 }
 
-func handleClientResponse(conn *net.TCPConn, response chan []byte) {
+func handleClientResponse(conn *net.TCPConn, response chan []byte, thisSubdomain string, connections *map[string]clientConnection) {
 	defer conn.Close()
 	buf := make([]byte, 1024)
 	for {
 		n, err := conn.Read(buf)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				fmt.Println("Client disconnected ", err)
+
+				// remove the connection from the map
+				// delete(s.connections, thisSubdomain)
+				delete(*connections, thisSubdomain)
+
+				fmt.Println("removed closed client ", err)
+				fmt.Println("Number of connections: ", len(*connections))
 				break
 			}
 		}
@@ -43,8 +49,9 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				fmt.Println("Client disconnected ", err)
-				delete(s.connections, conn.RemoteAddr().String())
 				break
+			} else {
+				fmt.Println("Error reading from client: ", err)
 			}
 		}
 
@@ -72,7 +79,7 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 					// the time, we can start a goroutine to listen for the response from the client
 					// and pipe it to the response channel
 
-					go handleClientResponse(conn, s.connections[contentFollowingDomain].response)
+					go handleClientResponse(conn, s.connections[contentFollowingDomain].response, contentFollowingDomain, &s.connections)
 					break
 
 				}
@@ -89,12 +96,23 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 			request, err := http.ReadRequest(bufio.NewReader(strings.NewReader(string(buf[:n]))))
 			if err != nil {
 				fmt.Println("Error reading request: ", err)
+				if errors.Is(err, io.EOF) {
+					fmt.Println("Client disconnected ", err)
+					for k, v := range s.connections {
+						if v.conn == conn {
+							delete(s.connections, k)
+							break
+						}
+					}
+
+					break
+				}
 				// write back some message
 				_, err := conn.Write([]byte("Error reading request"))
 				if err != nil {
 					fmt.Println("Error writing to client: ", err)
 				}
-				// TODO should disconnect the client
+
 				break
 			}
 
@@ -115,6 +133,12 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 				_, err = conn.Write(response)
 				if err != nil {
 					fmt.Println("Error writing to client: ", err)
+				}
+			} else {
+				// write back some message
+				_, err := conn.Write([]byte("No client found for the host"))
+				if err != nil {
+					fmt.Println("Error writing to client when no client is found: ", err)
 				}
 			}
 		}
