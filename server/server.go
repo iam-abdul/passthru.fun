@@ -153,8 +153,8 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 	}
 }
 
-func (s *Server) start() {
-	addr, err := net.ResolveTCPAddr("tcp", "localhost:8888")
+func (s *Server) start(port string) {
+	addr, err := net.ResolveTCPAddr("tcp", "localhost:"+port)
 	if err != nil {
 		// handle error
 		log.Fatal("Error resolving TCP address: ", err)
@@ -181,9 +181,9 @@ func (s *Server) start() {
 	}
 }
 
-func StartNewServer(address string) {
+func StartNewServer(port string) {
 	server := &Server{
 		connections: make(map[string]clientConnection),
 	}
-	server.start()
+	server.start(port)
 }
