@@ -6,7 +6,7 @@ Passthru is an open-source HTTP tunneling tool, similar to ngrok, but fully open
 
 ## Running as a Client
 
-To run Passthru as a client, use the `-type` flag and set it to `client`. You must also specify a domain using the `-domain` flag. This will be used as a subdomain. For example, if you specify `mydomain` as the domain, then your local port will be available via `mydomain.passthru.fun`.
+To run Passthru as a client, use the `-type` flag and set it to `client` (default is client). You must also specify a domain using the `-domain` flag. This will be used as a subdomain. For example, if you specify `mydomain` as the domain, then your local port will be available via `mydomain.passthru.fun`.
 
 Example:
 ```bash

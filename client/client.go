@@ -54,6 +54,8 @@ func RunAsClient(port string, domain string, verbose bool) {
 	if string(response[:n]) == "false" {
 		log.Println("domain not available")
 		return
+	} else if string(response[:n]) == "true" {
+		log.Println("\033[1m\033[31mlocalhost:" + port + "\033[0m <===> \033[1m\033[32m" + domain + ".passthru.fun\033[0m\033[0m")
 	}
 
 	buf := make([]byte, 1024)
