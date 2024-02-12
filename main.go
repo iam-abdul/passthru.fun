@@ -10,16 +10,22 @@ import (
 
 func main() {
 
-	typeOf := flag.String("type", "server", "type of the program to run")
+	typeOf := flag.String("type", "client", "type of the program to run")
 	port := flag.String("port", "8888", "port to run")
-	domain := flag.String("domain", "test", "domain to request")
+	domain := flag.String("domain", "", "domain to request")
+	verbose := flag.Bool("verbose", false, "verbose mode")
 	flag.Parse()
+
+	if *typeOf == "client" && *domain == "" {
+		fmt.Println("please provide a domain name")
+		return
+	}
 
 	if *typeOf == "server" {
 		server.StartNewServer(*port)
 	} else {
-		fmt.Println("used as client")
-		client.RunAsClient(*port, *domain)
+		// fmt.Println("used as client")
+		client.RunAsClient(*port, *domain, *verbose)
 	}
 
 }

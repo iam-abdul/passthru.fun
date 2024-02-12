@@ -8,7 +8,7 @@ import (
 	"net"
 )
 
-func RunAsClient(port string, domain string) {
+func RunAsClient(port string, domain string, verbose bool) {
 	// addr, err := net.ResolveTCPAddr("tcp", "localhost:8888")
 	// 	log.Fatal(err)
 	// }
@@ -67,7 +67,9 @@ func RunAsClient(port string, domain string) {
 				log.Fatal(err)
 			}
 		}
-		log.Println(string(buf[:n]))
+		if verbose {
+			log.Println(string(buf[:n]))
+		}
 
 		// create a tcp connection to the localhost 3000 server
 		// and send forward the request
