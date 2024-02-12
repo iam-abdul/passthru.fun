@@ -22,6 +22,29 @@ type Server struct {
 	connections     map[string]clientConnection
 }
 
+func isValidSubdomain(subdomain string) bool {
+	if len(subdomain) > 255 {
+		return false
+	}
+
+	labels := strings.Split(subdomain, ".")
+	for _, label := range labels {
+		if len(label) > 63 || len(label) < 1 {
+			return false
+		}
+
+		// if _, ok := net.LookupHost(label); ok != nil {
+		// 	return false
+		// }
+
+		if label == "app" {
+			return false
+		}
+	}
+
+	return true
+}
+
 func handleClientResponse(conn *net.TCPConn, response chan []byte, thisSubdomain string, connections *map[string]clientConnection, connectionsLock sync.RWMutex) {
 	defer conn.Close()
 	buf := make([]byte, 1024)
@@ -48,6 +71,7 @@ func handleClientResponse(conn *net.TCPConn, response chan []byte, thisSubdomain
 
 func (s *Server) handleConnection(conn *net.TCPConn) {
 	buf := make([]byte, 1024)
+	fmt.Println("New connection")
 	for {
 		n, err := conn.Read(buf)
 		if err != nil {
@@ -63,17 +87,34 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 			parts := strings.SplitN(string(buf[:n]), "domain", 2)
 			if len(parts) > 1 {
 				contentFollowingDomain := parts[1]
+				contentFollowingDomain = strings.TrimSpace(contentFollowingDomain) + ".passthru.fun"
 
-				contentFollowingDomain = strings.TrimSpace(contentFollowingDomain)
+				if !isValidSubdomain(contentFollowingDomain) {
+					_, err := conn.Write([]byte("Invalid subdomain" + " " + contentFollowingDomain))
+					if err != nil {
+						fmt.Println("Error writing to client: ", err)
+					}
+					conn.Close()
+					break
+				}
+
 				// check if the domain is already in the map
 				exists := s.connections[contentFollowingDomain]
+				fmt.Println("Exists: ", exists)
 				if exists.conn != nil {
 					// we will forward the message to the other client
 					_, err := conn.Write([]byte("false"))
 					if err != nil {
 						fmt.Println("Error writing to client: ", err)
 					}
+					conn.Close()
+					break
 				} else {
+					_, err := conn.Write([]byte("true"))
+					if err != nil {
+						fmt.Println("Error writing to client: ", err)
+					}
+
 					s.connectionsLock.Lock()
 					s.connections[contentFollowingDomain] = clientConnection{
 						conn:     conn,
@@ -90,9 +131,6 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 
 				}
 
-				// trim the content
-				fmt.Println("Content following domain:", contentFollowingDomain)
-				// Now contentFollowingDomain contains the contents following the word "domain"
 			}
 		} else {
 			// it is a http request that needs to be sent to proper client downstream
@@ -154,13 +192,15 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 }
 
 func (s *Server) start(port string) {
-	addr, err := net.ResolveTCPAddr("tcp", "localhost:"+port)
+	addr, err := net.ResolveTCPAddr("tcp", "0.0.0.0:"+port)
+
 	if err != nil {
 		// handle error
 		log.Fatal("Error resolving TCP address: ", err)
 	}
 
 	ln, err := net.ListenTCP("tcp", addr)
+	fmt.Println()
 	if err != nil {
 		// handle error
 		log.Fatal("Error listening on TCP: ", err)
@@ -168,6 +208,7 @@ func (s *Server) start(port string) {
 
 	for {
 		conn, err := ln.AcceptTCP()
+
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				fmt.Println("Err accepting connection from client: ", err)
@@ -175,7 +216,7 @@ func (s *Server) start(port string) {
 			}
 		}
 		// s.connections[conn.RemoteAddr().String()] = conn
-		// fmt.Println("New connection from: ", conn.RemoteAddr().String())
+		fmt.Println("New connection from: ", conn.RemoteAddr().String())
 
 		go s.handleConnection(conn)
 	}
