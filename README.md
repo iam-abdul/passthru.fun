@@ -41,4 +41,5 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Support
 
-If you encounter any problems or have any questions, please open an issue on GitHub.
+If you encounter any problems or have any questions, please open an issue on GitHub. 
+If you like this repo/project please showcase your <3 by ⭐ the project.
