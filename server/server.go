@@ -47,7 +47,7 @@ func isValidSubdomain(subdomain string) bool {
 
 func handleClientResponse(conn *net.TCPConn, response chan []byte, thisSubdomain string, connections *map[string]clientConnection, connectionsLock sync.RWMutex) {
 	defer conn.Close()
-	buf := make([]byte, 1024)
+	buf := make([]byte, 1000024)
 	for {
 		n, err := conn.Read(buf)
 		if err != nil {
@@ -70,9 +70,9 @@ func handleClientResponse(conn *net.TCPConn, response chan []byte, thisSubdomain
 }
 
 func (s *Server) handleConnection(conn *net.TCPConn) {
-	buf := make([]byte, 1024)
 	fmt.Println("New connection")
 	for {
+		buf := make([]byte, 1000024)
 		n, err := conn.Read(buf)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -133,11 +133,12 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 
 			}
 		} else {
+			// fmt.Println("Length of buf: ", n)
 			// it is a http request that needs to be sent to proper client downstream
 			// converting the buffer to http request
 
-			defer conn.Close()
-			request, err := http.ReadRequest(bufio.NewReader(strings.NewReader(string(buf[:n]))))
+			// defer conn.Close()
+			_, err := http.ReadRequest(bufio.NewReader(strings.NewReader(string(buf[:n]))))
 			if err != nil {
 				fmt.Println("Error reading request: ", err)
 				if errors.Is(err, io.EOF) {
@@ -159,8 +160,9 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 			}
 
 			// find the host from the request
-			host := request.Host
-			fmt.Println("Host: ", host)
+			// host := request.Host
+			host := "test.passthru.fun"
+			// fmt.Println("Host: ", host)
 
 			// writing the request to the proper client
 			clientConn := s.connections[host].conn
@@ -172,10 +174,15 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 
 				// read the response from the client and write it back
 				response := <-s.connections[host].response
-				_, err = conn.Write(response)
+
+				fmt.Println("Response from client hehe: ", string(response))
+				nono, err := conn.Write(response)
 				if err != nil {
 					fmt.Println("Error writing to client: ", err)
 				}
+				fmt.Println("wrote back to client: ", nono)
+				conn.Close()
+
 			} else {
 				// write back some message
 				_, err := conn.Write([]byte("No client found for the host"))
@@ -185,7 +192,6 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 			}
 		}
 
-		fmt.Println("Received from client: ", string(buf[:n]))
 		fmt.Println("Number of connections: ", len(s.connections))
 
 	}
