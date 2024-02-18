@@ -91,6 +91,21 @@ func RunAsClient(port string, domain string, verbose bool) {
 			}
 		}
 
+		// Check if the request is a WebSocket request
+		if req.Header.Get("Upgrade") == "websocket" {
+			log.Println("WebSocket request received, rejecting")
+			// Create a response string indicating that WebSocket upgrades are not supported
+			response := fmt.Sprintf("HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s", "WebSocket upgrade not supported")
+
+			// Write the response string to the TCP connection
+			_, err := conn.Write([]byte(response))
+			if err != nil {
+				log.Println("Error writing response to connection: ", err)
+			}
+			continue
+
+		}
+
 		// changing the URL to the local server
 		req.URL.Scheme = "http"
 		req.URL.Host = "localhost:" + port
@@ -106,33 +121,6 @@ func RunAsClient(port string, domain string, verbose bool) {
 		}
 		defer resp.Body.Close()
 
-		// body, err := io.ReadAll(resp.Body)
-		// if err != nil {
-		// 	log.Fatal("Error reading response body: ", err)
-		// }
-
-		// fmt.Println("Response from local server: ", resp.Status)
-		// fmt.Println("Response Body: ", string(body))
-
-		// writing the response back to the client
-		// Create a new http.Response
-		// res := &http.Response{
-		// 	StatusCode: resp.StatusCode,
-		// 	Header:     resp.Header,
-		// 	Body:       io.NopCloser(bytes.NewBuffer(body)),
-		// 	// You may also want to set the Proto, ProtoMajor, and ProtoMinor fields
-		// 	// to match the original response.
-		// 	Proto:      resp.Proto,
-		// 	ProtoMajor: resp.ProtoMajor,
-		// 	ProtoMinor: resp.ProtoMinor,
-		// }
-
-		// // Write the response back to the client
-		// err = res.Write(conn)
-		// if err != nil {
-		// 	log.Fatal(err)
-		// }
-
 		// Write the status line
 		statusLine := fmt.Sprintf("%s %s\r\n", resp.Proto, resp.Status)
 
@@ -142,6 +130,8 @@ func RunAsClient(port string, domain string, verbose bool) {
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		fmt.Println("Response headers ", headers.String())
 
 		// Read the body
 		body, err := io.ReadAll(resp.Body)
@@ -157,47 +147,6 @@ func RunAsClient(port string, domain string, verbose bool) {
 		if err != nil {
 			log.Fatal(err)
 		}
-
-		// #############################################################
-
-		// create a tcp connection to the localhost 3000 server
-		// and send forward the request
-		// localAddr, err := net.ResolveTCPAddr("tcp", "localhost:"+port)
-		// if err != nil {
-		// 	log.Fatal(err)
-		// }
-
-		// localConn, err := net.DialTCP("tcp", nil, localAddr)
-		// if err != nil {
-		// 	log.Fatal(err)
-		// }
-
-		// // write the request to the local server
-		// _, err = localConn.Write(buf[:n])
-		// if err != nil {
-		// 	log.Fatal(err)
-		// }
-
-		// fmt.Println("wrote to local server: ", n)
-
-		// // read the response from the local server
-		// tempBuffer := make([]byte, 100024)
-
-		// n, err = localConn.Read(tempBuffer)
-		// if err != nil {
-		// 	log.Fatal(err)
-		// }
-		// fmt.Println("Response from local server: ", n)
-
-		// // write the response back to the client
-		// n, err = conn.Write(tempBuffer[:n])
-		// if err != nil {
-		// 	log.Fatal(err)
-		// }
-
-		// fmt.Println("wrote back to client: ", n)
-
-		// localConn.Close()
 
 	}
 }

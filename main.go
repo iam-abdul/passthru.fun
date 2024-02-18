@@ -25,7 +25,7 @@ func main() {
 		server.StartNewServer(*port)
 	} else {
 		// fmt.Println("used as client")
-		client.RunAsClient(*port, *domain, *verbose)
+		client.RunAsClientV2(*port, *domain, *verbose)
 	}
 
 }

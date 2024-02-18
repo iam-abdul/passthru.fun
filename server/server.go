@@ -47,7 +47,7 @@ func isValidSubdomain(subdomain string) bool {
 
 func handleClientResponse(conn *net.TCPConn, response chan []byte, thisSubdomain string, connections *map[string]clientConnection, connectionsLock sync.RWMutex) {
 	defer conn.Close()
-	buf := make([]byte, 1000024)
+	buf := make([]byte, 10000024)
 	for {
 		n, err := conn.Read(buf)
 		if err != nil {
@@ -70,9 +70,9 @@ func handleClientResponse(conn *net.TCPConn, response chan []byte, thisSubdomain
 }
 
 func (s *Server) handleConnection(conn *net.TCPConn) {
-	fmt.Println("New connection")
+
 	for {
-		buf := make([]byte, 1000024)
+		buf := make([]byte, 10000024)
 		n, err := conn.Read(buf)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -138,6 +138,7 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 			// converting the buffer to http request
 
 			// defer conn.Close()
+			fmt.Println("Request: from outside server ")
 			_, err := http.ReadRequest(bufio.NewReader(strings.NewReader(string(buf[:n]))))
 			if err != nil {
 				fmt.Println("Error reading request: ", err)
@@ -175,13 +176,16 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 				// read the response from the client and write it back
 				response := <-s.connections[host].response
 
-				fmt.Println("Response from client hehe: ", string(response))
+				// fmt.Println("Response from client hehe: ", string(response))
 				nono, err := conn.Write(response)
 				if err != nil {
 					fmt.Println("Error writing to client: ", err)
 				}
 				fmt.Println("wrote back to client: ", nono)
+				fmt.Println("Number of connections: ", len(s.connections))
 				conn.Close()
+				fmt.Println("Closed connection")
+				break
 
 			} else {
 				// write back some message
@@ -189,10 +193,12 @@ func (s *Server) handleConnection(conn *net.TCPConn) {
 				if err != nil {
 					fmt.Println("Error writing to client when no client is found: ", err)
 				}
+
+				fmt.Println("No client found for the host")
+				conn.Close()
+				break
 			}
 		}
-
-		fmt.Println("Number of connections: ", len(s.connections))
 
 	}
 }
@@ -222,7 +228,7 @@ func (s *Server) start(port string) {
 			}
 		}
 		// s.connections[conn.RemoteAddr().String()] = conn
-		fmt.Println("New connection from: ", conn.RemoteAddr().String())
+		// fmt.Println("New connection from: ", conn.RemoteAddr().String())
 
 		go s.handleConnection(conn)
 	}
