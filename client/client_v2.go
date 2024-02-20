@@ -47,6 +47,11 @@ func giveResponse(conn *net.TCPConn, port string, buffer []byte) {
 	// clearing the requestURI field
 	req.RequestURI = ""
 
+	// we will do this:
+	// since this runs on client we will load the whole response body to
+	// a buffer and then write it to the client along with the content length
+	// header if we don't get the content length directly from the client server
+
 	// writing the request to the local server
 	client := &http.Client{}
 	resp, err := client.Do(req)
@@ -55,7 +60,7 @@ func giveResponse(conn *net.TCPConn, port string, buffer []byte) {
 	}
 	defer resp.Body.Close()
 
-	// Write the status line
+	// ###############################################################
 	statusLine := fmt.Sprintf("%s %s\r\n", resp.Proto, resp.Status)
 
 	// Format the headers
@@ -65,23 +70,62 @@ func giveResponse(conn *net.TCPConn, port string, buffer []byte) {
 		log.Fatal(err)
 	}
 
+	fmt.Println("Response headers ", headers.String())
+
+	// Write the status line
+	_, err = io.WriteString(conn, statusLine)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Write the headers
+	_, err = io.WriteString(conn, headers.String()+"\r\n")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// stream the body
+	bo, err := io.Copy(conn, resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// send EOF to the client
+	_, err = conn.Write([]byte{0})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println("Wrote back to client: ", bo)
+
+	// ###############################################################
+	// // Write the status line
+	// statusLine := fmt.Sprintf("%s %s\r\n", resp.Proto, resp.Status)
+
+	// // Format the headers
+	// headers := new(bytes.Buffer)
+	// err = resp.Header.Write(headers)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+
 	// fmt.Println("Response headers ", headers.String())
 
-	// Read the body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
+	// // Read the body
+	// body, err := io.ReadAll(resp.Body)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
-	// Combine the status line, headers, and body into one string
-	response := statusLine + headers.String() + "\r\n" + string(body)
+	// // Combine the status line, headers, and body into one string
+	// response := statusLine + headers.String() + "\r\n" + string(body)
 
-	fmt.Println("Response: ", response)
-	// Write the response to the client
-	_, err = io.WriteString(conn, response)
-	if err != nil {
-		log.Fatal(err)
-	}
+	// fmt.Println("Response: ", response)
+	// // Write the response to the client
+	// _, err = io.WriteString(conn, response)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
 }
 

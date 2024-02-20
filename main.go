@@ -22,7 +22,7 @@ func main() {
 	}
 
 	if *typeOf == "server" {
-		server.StartNewServer(*port)
+		server.StartNewServerV2(*port)
 	} else {
 		// fmt.Println("used as client")
 		client.RunAsClientV2(*port, *domain, *verbose)
