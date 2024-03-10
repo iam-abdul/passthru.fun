@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -58,6 +59,7 @@ func (s *Server) start_v2(port string) {
 
 	for {
 		conn, err := ln.AcceptTCP()
+		fmt.Println("New connection from: ", conn.RemoteAddr().String())
 
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -121,13 +123,23 @@ func (s *Server) start_v2(port string) {
 			}
 
 		} else {
-			go func() {
+			go func(buffer []byte, connection *net.TCPConn) {
 
 				// its a http request then
 				// extract the host and forward to the client
-				_, err := http.ReadRequest(bufio.NewReader(strings.NewReader(string(buf[:n]))))
+				// fmt.Println("Request from client: ", string(buf[:n]))
+				req, err := http.ReadRequest(bufio.NewReader(strings.NewReader(string(buffer))))
 				if err != nil {
 					fmt.Println("Error reading the buffer into http request: ", err)
+				} else {
+					fmt.Println("Request URL ", req.URL)
+					if req.Header.Get("Upgrade") == "websocket" {
+						fmt.Println("WebSocket requests are not allowed")
+						fmt.Fprintf(conn, "HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\n\r\nWebSocket requests are not allowed")
+						connection.Close()
+						return
+
+					}
 				}
 
 				host := "test.passthru.fun"
@@ -142,7 +154,7 @@ func (s *Server) start_v2(port string) {
 
 					fmt.Println("before copy code")
 
-					defer conn.Close()
+					defer connection.Close()
 					// after writing the request we will stream the response back to the client
 					// num, err := io.Copy(conn, clientConn.conn)
 					// if err != nil {
@@ -171,37 +183,43 @@ func (s *Server) start_v2(port string) {
 						log.Fatal(err)
 					}
 
-					fmt.Println("Response headers ", headers.String())
+					// fmt.Println("Response headers ", headers.String())
 
 					// Write the status line
-					_, err = io.WriteString(conn, statusLine)
+					_, err = io.WriteString(connection, statusLine)
 					if err != nil {
-						log.Fatal(err)
+						log.Fatal("Error writing the status line ", err)
 					}
 
 					// Write the headers
-					_, err = io.WriteString(conn, headers.String()+"\r\n")
+					_, err = io.WriteString(connection, headers.String()+"\r\n")
 					if err != nil {
-						log.Fatal(err)
+
+						log.Fatal("Error writing the headers ", err)
 					}
 
 					// Instead of copy we will use CopyN, the N will the number of
 					// bytes to be read from the response body we will get this N from content-length
 					// header
 					// stream the body
-					bo, err := io.Copy(conn, resp.Body)
+					contentLength, err := strconv.ParseInt(resp.Header.Get("Content-Length"), 10, 64)
 					if err != nil {
-						log.Fatal(err)
+						log.Fatal("Error getting the content length header ", err)
 					}
 
-					fmt.Println("Wrote back to client: ", bo)
+					n, err := io.CopyN(connection, resp.Body, contentLength)
+					if err != nil && err != io.EOF {
+						log.Fatal("Error copyingN bytes to connection ", err)
+					}
+
+					fmt.Println("Wrote back to client: ", n)
 
 				} else {
 					fmt.Println("No client connection found for host: ", host)
-					defer conn.Close()
+					defer connection.Close()
 				}
 
-			}()
+			}(buf[:n], conn)
 		}
 	}
 }

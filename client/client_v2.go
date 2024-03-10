@@ -25,27 +25,14 @@ func giveResponse(conn *net.TCPConn, port string, buffer []byte) {
 		}
 	}
 
-	// Check if the request is a WebSocket request
-	if req.Header.Get("Upgrade") == "websocket" {
-		log.Println("WebSocket request received, rejecting")
-		// Create a response string indicating that WebSocket upgrades are not supported
-		response := fmt.Sprintf("HTTP/1.1 400 Bad Request\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n%s", "WebSocket upgrade not supported")
-
-		// Write the response string to the TCP connection
-		_, err := conn.Write([]byte(response))
-		if err != nil {
-			log.Println("Error writing response to connection: ", err)
-		}
-		return
-
-	}
-
 	// changing the URL to the local server
 	req.URL.Scheme = "http"
 	req.URL.Host = "localhost:" + port
 
 	// clearing the requestURI field
 	req.RequestURI = ""
+
+	fmt.Println("Request: ", req.URL.String())
 
 	// we will do this:
 	// since this runs on client we will load the whole response body to
@@ -70,7 +57,21 @@ func giveResponse(conn *net.TCPConn, port string, buffer []byte) {
 		log.Fatal(err)
 	}
 
-	fmt.Println("Response headers ", headers.String())
+	// buffer to store the response
+	var responseBuffer bytes.Buffer
+	contentLength := resp.Header.Get("Content-Length")
+	if contentLength == "" {
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		responseBuffer.Write(body)
+		// add the content length header
+		headers.WriteString("Content-Length: " + fmt.Sprint(len(body)) + "\r\n")
+	}
+
+	// fmt.Println("Response headers ", headers.String())
 
 	// Write the status line
 	_, err = io.WriteString(conn, statusLine)
@@ -85,18 +86,24 @@ func giveResponse(conn *net.TCPConn, port string, buffer []byte) {
 	}
 
 	// stream the body
-	bo, err := io.Copy(conn, resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
+	if contentLength == "" {
+		copied, err := io.Copy(conn, &responseBuffer)
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	// send EOF to the client
-	_, err = conn.Write([]byte{0})
-	if err != nil {
-		log.Fatal(err)
+		fmt.Println("Wrote back to client: ", copied)
+	} else {
+		copied, err := io.CopyN(conn, resp.Body, resp.ContentLength)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println("Wrote back to client: ", copied)
 	}
-
-	fmt.Println("Wrote back to client: ", bo)
+	// bo, err := io.Copy(conn, resp.Body)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
 
 	// ###############################################################
 	// // Write the status line
@@ -140,7 +147,7 @@ func RunAsClientV2(port string, domain string, verbose bool) {
 		log.Fatal(err)
 	}
 
-	defer conn.Close()
+	// defer conn.Close()
 
 	// will request the domain here
 	_, err = conn.Write([]byte("domain " + domain))
@@ -152,7 +159,7 @@ func RunAsClientV2(port string, domain string, verbose bool) {
 		}
 	}
 
-	response := make([]byte, 10000024)
+	response := make([]byte, 1024)
 	n, err := conn.Read(response)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
@@ -171,7 +178,7 @@ func RunAsClientV2(port string, domain string, verbose bool) {
 
 	for {
 
-		buf := make([]byte, 10000024)
+		buf := make([]byte, 4084)
 		n, err := conn.Read(buf)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
